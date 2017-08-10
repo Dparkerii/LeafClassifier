@@ -1,0 +1,139 @@
+import keras
+from keras.preprocessing.image import ImageDataGenerator, img_to_array, load_img
+from keras.models import Sequential
+from keras.layers import Conv2D, MaxPooling2D
+from keras.layers import Activation, Dropout, Flatten, Dense
+from keras import backend as K
+from keras.utils.np_utils import to_categorical
+import os
+import numpy as np
+from PIL import Image
+
+#Generate a list of classifications, store as a numpy array for keras to use
+labels = []
+with open('../data/species_names.txt') as f:
+    for line in f:
+        label = line.split()
+        labels.append(label[0])
+labels = np.asarray(labels)
+
+#declare variables to be used
+# dimensions of our images.
+img_width, img_height = 64, 64
+#directory pointing to training data
+train_data_dir = '../train'
+validation_data_dir = '../validation'
+nb_train_samples = 777
+nb_validation_samples = 213
+epochs_ = 2
+batch_size = 777
+num_classes = 99
+
+#determine if either theano or tensorflow is used, difference is when channel is declared
+if K.image_data_format() == 'channels_first':
+    input_shape = (1, img_width, img_height)
+else:
+    input_shape = (img_width, img_height, 1)
+    
+#generate 4 dimensional array from directory of directory of jpegs
+#output is (sample number, row data, column data, channel)
+def generate_arrays_from_file(path):
+    starting_dir = os.getcwd()
+    output = []
+    answers = []
+    count = 0
+    for file in os.walk(path):
+        os.chdir(file[0])
+        topdir = os.getcwd()
+        for species in file[1]:
+            os.chdir(topdir + "/" + species)
+            for pictures in os.listdir(os.getcwd()):
+                img = Image.open(pictures)
+                img = img.resize((img_width, img_height))
+                x = img_to_array(img)
+                answer_array = []
+                answer_array.append(count)
+                answers.append(answer_array)
+                output.append(x)
+            count += 1
+    os.chdir(starting_dir)
+    x_output = np.asarray(output)
+    y_output = np.asarray(answers)
+    return x_output,y_output
+
+
+#sequential model based on working CIFAR10 model
+model = Sequential()
+#first layer is convolution to extract small details about the image
+model.add(Conv2D(32, (3, 3), padding='same',
+                 input_shape=input_shape))
+#Then an activation layer is called to show what was found by the convolution
+model.add(Activation('relu'))
+#same process as before but to extract larger details
+model.add(Conv2D(32, (3, 3)))
+model.add(Activation('relu'))
+
+#Pooling layer is called to reduce the size to something more manageable
+model.add(MaxPooling2D(pool_size=(2, 2)))
+
+#Dropout layer is called to help mitigate effects of overfitting
+model.add(Dropout(0.25))
+
+#A flattening layer condenses the network outputs down to a 1D vector for the Dense layers to use
+model.add(Flatten())
+
+#Dense layer connects all inputs to all outputs, amount of nodes used is usually some power of 2
+model.add(Dense(512))
+model.add(Activation('relu'))
+
+#an aggressive dropout layer is used here to again help fight overfitting
+#this layer is more aggressive because it is more easily affected by overfitting
+model.add(Dropout(0.5))
+
+#finally the classification occurs and is output as a softmax activation layer
+model.add(Dense(num_classes))
+
+#softmax layer essentially give the probability of a correct classification
+model.add(Activation('softmax'))
+
+#RMSprop is used as the backpropigation algorithm
+opt = keras.optimizers.rmsprop(lr=0.0001, decay=1e-6)
+
+#finally the model is complied for training
+model.compile(loss='categorical_crossentropy',
+              optimizer=opt,
+              metrics=['accuracy'])
+
+#data is accessed from files for use as input
+gentest,genanswers = generate_arrays_from_file(train_data_dir)
+valdata,valanswers = generate_arrays_from_file(validation_data_dir)
+
+genanswers = to_categorical(genanswers,99)
+valanswers = to_categorical(valanswers,99)
+
+#can use this ImageDataGenerator to help fight against overfitting and to expand small data sets
+'''
+datagen = ImageDataGenerator(
+    featurewise_center=False,  # set input mean to 0 over the dataset
+    samplewise_center=False,  # set each sample mean to 0
+    featurewise_std_normalization=False,  # divide inputs by std of the dataset
+    samplewise_std_normalization=False,  # divide each input by its std
+    zca_whitening=False,  # apply ZCA whitening
+    rotation_range=0,  # randomly rotate images in the range (degrees, 0 to 180)
+    width_shift_range=0.1,  # randomly shift images horizontally (fraction of total width)
+    height_shift_range=0.1,  # randomly shift images vertically (fraction of total height)
+    horizontal_flip=True,  # randomly flip images
+    vertical_flip=False)  # randomly flip images
+'''
+
+#Due to limited processing power this is the only augmentation made
+datagen = ImageDataGenerator(horizontal_flip=True)
+
+# Fit the model on the batches generated by datagen.flow().
+# best used for heavily augmented data inputs
+#model.fit_generator(datagen.flow(gentest, genanswers,batch_size=batch_size),steps_per_epoch=gentest.shape[0],epochs=epochs_,validation_data=(valdata, valanswers))
+
+model.fit(gentest,genanswers,epochs=epochs_)
+
+#finally save the weights of the trained model to be used else where
+model.save_weights('first_try.h5')
