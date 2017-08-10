@@ -10,3 +10,4 @@ Classifier works at 52% accuracy over only 2 epochs of training on pre-segmented
 - Port trained network to simple android application
 - Real world testing
 - Expand app asthetics
+- Clean repo
