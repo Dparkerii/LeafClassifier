@@ -9,7 +9,7 @@ import os
 import numpy as np
 from PIL import Image
 
-#Generate a list of classifications, store as a numpy array for keras to use
+#Generate a list of classifications, store as a numpy array for keras to us
 labels = []
 with open('../data/species_names.txt') as f:
     for line in f:
